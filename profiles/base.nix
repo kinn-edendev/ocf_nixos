@@ -128,8 +128,10 @@
       exporters = {
         node = {
           enable = true;
-          enabledCollectors = [ "systemd" ];
           port = 9100;
+	  textCollector.enable = true;
+	  textCollector.textfileDir = "/var/lib/node_exporter/textfile_collector";
+          enabledCollectors = [ "systemd" ];
           extraFlags = [ "--collector.ethtool" "--collector.softirqs" "--collector.tcpstat" "--collector.wifi" ];
         };
       };
@@ -148,6 +150,32 @@
       ServerName printhost.ocf.berkeley.edu
       Encryption Always
     '';
+    "prometheus_scripts/logged_in_users_exporter.sh".text= ''
+      #!/bin/bash
+      OUTPUT_FILE="/var/lib/node_exporter/textfile_collector/logged_in_users.prom"
+      who | awk '{print $1}' | sort | uniq | awk '{print "node_logged_in_user{name=\"" $1 "\"} 1"}' > $OUTPUT_FILE
+  };
+  
+  systemd.tmpfiles.rules = [
+    "d /var/lib/node_exporter/textfile_collector 0755 node_exporter node_exporter -"
+    "z /etc/prometheus_scripts/logged_in_users_exporter.sh 0755 root root -"
+  ];
+
+  systemd.services.logged_in_users_exporter = {
+    description = "Export logged-in users to Node Exporter";
+    serviceConfig = {
+      ExecStart = "/etc/prometheus_scripts/logged_in_users_exporter.sh";
+      User = "node_exporter";
+    };
+    wantedBy = [ "multi-user.target" ];
+  };
+
+  systemd.timers.logged_in_users_exporter = {
+    description = "Run the logged_in_users_exporter script every minute";
+    timerConfig = {
+      OnCalendar = "*:0/1";  # Runs every minute
+    };
+    wantedBy = [ "timers.target" ];
   };
 
   environment.etc."nixos/configuration.nix".text = ''
